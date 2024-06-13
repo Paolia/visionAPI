@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Cloud Vision API</title>
+</head>
+
+
+<body>
+    <select name="analysisType" id="analysisType">
+        <option value="LABEL_DETECTION">ラベル認識</option>
+        <option value="FACE_DETECTION">表情認識</option>
+        <option value="SAFE_SEARCH_DETECTION">セーフサーチ</option>
+        <option value="LANDMARK_DETECTION">ランドマーク認識</option>
+        <option value="LOGO_DETECTION">ロゴ認識</option>
+        <option value="WEB_DETECTION">WEB検索</option>
+    </select>
+    <div id="note"></div>
+    <img style="max-width: 600px;">
+    <input type="file" accept="image/*" />
+    <div id="status"></div>
+    <div id="found"></div>
+    <ul id="discoveries"></ul>
+    <pre></pre>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <!-- axiosライブラリの読み込み -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+    <script type="text/javascript">
+        const api_key = "My Google Key";
+        const url = `https://vision.googleapis.com/v1/images:annotate`;
+
+        // Send API Request to Cloud Vision API
+        let select = document.getElementById('analysisType');
+        select.onchange = function () {
+            //console.log(select.value)
+            if (select.value == "FACE_DETECTION") {
+                alert("表情認識は顔がよくわかる写真でないと機能しないと思います。複数人もだめだと思います。");
+            } else if (select.value == "LANDMARK_DETECTION") {
+                alert("ランドマーク認識は、かなり有名な場所でないと認識されないと思います。");
+            } else if (select.value == "LOGO_DETECTION") {
+                alert("ロゴ認識は、有名な会社や商品のロゴがはっきり写っていれば認識されるはずです。");
+            }
+        };
+        const sendAPI = (base64string) => {
+            let body = {
+                requests: [
+                    { image: { content: base64string }, features: [{ type: select.value }] }
+                ]
+            };
+            let xhr = new XMLHttpRequest();
+            xhr.open('POST', `${url}?key=${api_key}`, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            const p = new Promise((resolve, reject) => {
+                xhr.onreadystatechange = () => {
+                    if (xhr.readyState != XMLHttpRequest.DONE) return;
+                    if (xhr.status >= 400) return reject({ message: `Failed with ${xhr.status}:${xhr.statusText}` });
+                    resolve(JSON.parse(xhr.responseText));
+                };
+            })
+            xhr.send(JSON.stringify(body));
+            return p;
+        }
+
+        // Read input file
+        const readFile = (file) => {
+            let reader = new FileReader();
+            const p = new Promise((resolve, reject) => {
+                reader.onload = (ev) => {
+                    document.querySelector('img').setAttribute('src', ev.target.result);
+                    resolve(ev.target.result.replace(/^data:image\/(png|jpeg);base64,/, ''));
+                };
+            })
+            reader.readAsDataURL(file);
+            return p;
+        };
+
+        // Event handling
+        document.querySelector('input').addEventListener('change', ev => {
+            if (!ev.target.files || ev.target.files.length == 0) return;
+            Promise.resolve(ev.target.files[0])
+                .then(readFile)
+                .then(sendAPI)
+                .then(res => {
+                    console.log('SUCCESS!');
+                    $("#status").text("認識成功");
+                    items = [];
+                    if (select.value == "LABEL_DETECTION") {
+                        let temp = res.responses[0].labelAnnotations;
+                        console.log(temp);
+                        temp.forEach((item, i) => {
+                            console.log(item.description);
+                            items.push('<li>' + item.description + '</li>');
+                        });
+                        $("#found").html('<h2>この写真に写っているものは：</h2>')
+                        $("#discoveries").html(items);
+                    } else if (select.value == "FACE_DETECTION") {
+                        //console.log(res.responses[0].faceAnnotations[0].angerLikelihood);
+                        $("#found").html('<h2>今の気持ちは：</h2>')
+                        items.push('<li>怒ってる: ' + res.responses[0].faceAnnotations[0].angerLikelihood + '</li>');
+                        items.push('<li>ぶれてる: ' + res.responses[0].faceAnnotations[0].blurredLikelihood + '</li>');
+                        items.push('<li>帽子をかぶってる: ' + res.responses[0].faceAnnotations[0].headwearLikelihood + '</li>');
+                        items.push('<li>うれしい: ' + res.responses[0].faceAnnotations[0].joyLikelihood + '</li>');
+                        $("#discoveries").html(items);
+                    } else if (select.value == "SAFE_SEARCH_DETECTION") {
+                        //console.log(res.responses[0].safeSearchAnnotation);
+                        $("#found").html('<h2>グーグル先生のお達しでは：</h2>')
+                        items.push('<li>エロ: ' + res.responses[0].safeSearchAnnotation.adult + '</li>');
+                        items.push('<li>グロ（か医療系）: ' + res.responses[0].safeSearchAnnotation.medical + '</li>');
+                        items.push('<li>挑発的: ' + res.responses[0].safeSearchAnnotation.racy + '</li>');
+                        items.push('<li>なりすまし: ' + res.responses[0].safeSearchAnnotation.spoof + '</li>');
+                        items.push('<li>暴力: ' + res.responses[0].safeSearchAnnotation.violence + '</li>');
+                        $("#discoveries").html(items);
+                    } else if (select.value == "LANDMARK_DETECTION") {
+                        //console.log(res.responses[0].landmarkAnnotations[0].description);
+                        //console.log(res.responses[0].landmarkAnnotations[0].locations[0].latLng.latitude);
+                        //console.log(res.responses[0].landmarkAnnotations[0].locations[0].latLng.longitude);
+                        $("#found").html('<h2>この場所は：</h2>')
+                        $("#discoveries").html('<li>' + res.responses[0].landmarkAnnotations[0].description + ' みたいですね。</li><li>経度緯度は</li><li>' + res.responses[0].landmarkAnnotations[0].locations[0].latLng.longitude + '</li><li>' + res.responses[0].landmarkAnnotations[0].locations[0].latLng.longitude + '</li><li style="list-style:none"> なので後で地図を入れますね。グーグル先生はせっかく作ったBingマップを拒否しやがったんで。</li>');
+                    } else if (select.value == "LOGO_DETECTION") {
+                        console.log(res.responses[0]);
+                        let temp = res.responses[0].logoAnnotations;
+                        console.log(temp);
+                        temp.forEach((item, i) => {
+                            console.log(item.description);
+                            items.push('<li>' + item.description + '</li>');
+                        });
+                        $("#found").html('<h2>この写真に写っているロゴは：</h2>')
+                        $("#discoveries").html(items);
+                    } else if (select.value == "WEB_DETECTION") {
+                        //console.log(res.responses[0].webDetection.bestGuessLabels[0].label);
+                        //console.log(res.responses[0].fullMatchingImages);
+                        //console.log(res.responses[0].webDetection.fullMatchingImages[0].url);
+                        for (let i = 0; i < res.responses[0].webDetection.fullMatchingImages.length; i++) {
+                            items.push('<li><a href="' + res.responses[0].webDetection.fullMatchingImages[i].url + '" target = "_blank"><img src ="' + res.responses[0].webDetection.fullMatchingImages[i].url + '" width="250"></a></li>');
+                        }
+                        console.log(items);
+                        $("#discoveries").html(items);
+                        //$("#found").html('<h2>この写真とよく似た写真は：</h2>')
+                        //$("#discoveries").html(items);
+                        //console.log(res.responses[0].webDetection);
+                    }
+                    //
+                    //document.querySelector('pre').innerHTML = JSON.stringify(res, null, 2);
+                })
+                .catch(err => {
+                    console.log('FAILED:(', err);
+                    $("#status").text("認識失敗");
+                    //document.querySelector('pre').innerHTML = JSON.stringify(err, null, 2);
+                });
+        });
+    </script>
+</body>
+
+</html>
